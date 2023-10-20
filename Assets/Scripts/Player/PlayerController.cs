@@ -1,31 +1,37 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
+using Player;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 [RequireComponent(typeof(Rigidbody))]
 
-public class PlayerMovement : MonoBehaviour
+public class PlayerController : MonoBehaviour, IStunable
 {
     [Header("Moving")]
-    [SerializeField] private float positiveMaxSpeed;
-    [SerializeField] private float negativeMaxSpeed;
+    [SerializeField] private float maxMovingSpeed;
     [SerializeField] private float speedIncreasingRate;
     [SerializeField] private float speedDecreasingRate;
+    [SerializeField] private Transform cameraOrientation;
+    private Vector3 moveDirection;
+     private float currentSpeed;
+
+    [Header("Jumping")] 
+    [SerializeField] private float jumpCooldown;
+    [SerializeField] private float jumpForce;
+    [SerializeField] private bool canJump = true;
+    private bool inputJump;
     
-    [Header("Stop moving")]
-    [SerializeField] private float dampingSpeedFactor=0.9f;
-    [SerializeField] private float minimalMovingSpeed;
-   
     [Header("Physical stats")] 
     [SerializeField] private float forceMultiplayer;
+    [SerializeField] private float airVelocity;
+
+    [Header("Rotating")]
+    [SerializeField] private float rotateSpeed;
     
-    [Header("Rotating")] 
-    [SerializeField] private Vector3 rotationSpeed;
-    
-    [Header("Debug")]
-    [SerializeField] private float currentSpeed;
+    [Header("States")] 
+    [SerializeField] private GroundCheckCollider groundCheckCollider;
+    [SerializeField] private bool onGround = true;
+    private bool canMove = true;
     
     private InputHandler _inputHandler = new InputHandler();
     private Rigidbody _rigidbody;
@@ -33,37 +39,108 @@ public class PlayerMovement : MonoBehaviour
     private void Awake()
     {
         _rigidbody = GetComponent<Rigidbody>();
-        Cursor.lockState = CursorLockMode.Locked;
+        _rigidbody.freezeRotation = true;
     }
+    
+    bool IsGrounded ()
+    {
+        return groundCheckCollider.OnGround;
+    }
+
+    private void Update()
+    {
+            float horizontal = _inputHandler.MoveInput.x;
+            float vertical = _inputHandler.MoveInput.y;
+
+            Vector3 v2 = vertical * cameraOrientation.forward; 
+            Vector3 h2 = horizontal * cameraOrientation.right; 
+            moveDirection = (v2 + h2).normalized;
+            moveDirection.y = 0;
+
+            onGround = IsGrounded();
+            inputJump = _inputHandler.IsJumping;
+    }
+    
+    
 
     private void FixedUpdate()
     {
-        Vector2 moveInput = _inputHandler.MoveInput;
-        ChangeSpeed(moveInput.y);
-        Vector2 mouseInput = _inputHandler.MouseInput;
-        _rigidbody.AddForce(transform.forward * currentSpeed * forceMultiplayer  * Time.fixedDeltaTime, ForceMode.VelocityChange);
-        _rigidbody.AddRelativeTorque(Vector3.Scale(new Vector3(-mouseInput.y, mouseInput.x, -moveInput.x), rotationSpeed*Time.fixedDeltaTime), ForceMode.VelocityChange);
+        if (canMove)
+        {
+            if (moveDirection.x != 0 || moveDirection.z != 0)
+            {
+                Vector3 targetDirection = moveDirection; //Direction of the character
+                Quaternion tr = Quaternion.LookRotation(targetDirection); //Rotation of the character to where it moves
+                Quaternion targetRotation =
+                    Quaternion.Slerp(transform.rotation, tr,
+                        Time.fixedDeltaTime * rotateSpeed); //Rotate the character little by little
+                transform.rotation = targetRotation;
+            }
+
+            Vector3 velocity = _rigidbody.velocity;
+            
+            MovePlayer();
+            ControlSpeed();
+            
+            if (onGround)
+            {
+                if (canJump && inputJump)
+                {
+                    _rigidbody.velocity = new Vector3(velocity.x, jumpForce, velocity.z);
+                    canJump = false;
+                    WaitAndDo(jumpCooldown, () => canJump = true);
+                }
+            }
+        }
+
+    }
+
+    private void ControlSpeed()
+    {
+        if (moveDirection.magnitude !=0)
+        {
+            currentSpeed += speedIncreasingRate;
+        }
+        else
+        {
+            currentSpeed -= speedDecreasingRate;
+        }
+        
+        currentSpeed = Math.Clamp(currentSpeed, 0, maxMovingSpeed);
         
     }
 
-    private void ChangeSpeed(float direction)
+    private void MovePlayer()
     {
-        switch (direction)
+        if (onGround)
         {
-            case >0: currentSpeed += direction * speedIncreasingRate;
-                break;
-            case <0: currentSpeed += direction * speedDecreasingRate;
-                break;
-            default: currentSpeed *= dampingSpeedFactor;
-                break;
+            _rigidbody.AddForce(moveDirection * currentSpeed *forceMultiplayer, ForceMode.Force);
         }
-        currentSpeed = Math.Clamp(currentSpeed, -negativeMaxSpeed, positiveMaxSpeed);
+        else
+        {
+            _rigidbody.AddForce(moveDirection*currentSpeed*airVelocity * forceMultiplayer, ForceMode.Force);
+        }
+    }
 
-        if (Math.Abs(currentSpeed) < minimalMovingSpeed)
+    public void Stun(float stunDuration)
+    {
+        if (canMove)
         {
-            currentSpeed = 0;
+            canMove = false;
+            WaitAndDo(stunDuration, () => canMove = true);
         }
-        
+    }
+    
+    
+    public Coroutine WaitAndDo(float timeInSeconds, Action action)
+    {
+        return StartCoroutine(Execute(timeInSeconds, action));
+    }
+ 
+    private IEnumerator Execute(float timeInSeconds, Action action)
+    {
+        yield return new WaitForSeconds(timeInSeconds);
+        if (Application.isPlaying) action();
     }
     
 }

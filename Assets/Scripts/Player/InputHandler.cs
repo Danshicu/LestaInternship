@@ -1,44 +1,42 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class InputHandler
 {
-    private Vector2 _mouseInput;
     private Vector2 _moveInput;
+    private bool isJumping;
     public Vector2 MoveInput
     {
         get
         {
-            HandleKeyInput();
+            HandleMoveInput();
             return _moveInput;
         }
     }
 
-    public Vector2 MouseInput
+    public bool IsJumping
     {
         get
         {
-            HandleMouseInput();
-            return _mouseInput;
+            HandleKeyInput();
+            return isJumping;
         }
     }
     
     public InputHandler()
     {
-        _mouseInput = new Vector2();
         _moveInput = new Vector2();
+    }
+    private void HandleMoveInput()
+    {
+        _moveInput.x = Input.GetAxis("Horizontal");
+        _moveInput.y = Input.GetAxis("Vertical");
+        
     }
 
     private void HandleKeyInput()
     {
-        _moveInput.x = Input.GetAxis("Horizontal");
-        _moveInput.y = Input.GetAxis("Vertical");
+        isJumping = Input.GetButton("Jump");
+        
     }
-
-    private void HandleMouseInput()
-    {
-        _mouseInput.x = Input.GetAxis("Mouse X");
-        _mouseInput.y = Input.GetAxis("Mouse Y");
-    }
+    
 }
